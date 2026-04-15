@@ -1,17 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionFromRequest } from "@/lib/auth";
 
-const PUBLIC_PATHS = ["/login", "/api/auth/login", "/api/users/seed"];
+const PUBLIC_PATHS = [
+  "/login",
+  "/api/auth/login",
+  "/api/auth/send-otp",
+  "/api/auth/verify-otp",
+  "/api/auth/reset-password",
+  "/forgot-password",
+  "/verify-email",
+];
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // Allow public paths
   if (PUBLIC_PATHS.some((p) => pathname.startsWith(p))) {
     return NextResponse.next();
   }
 
-  // Allow Next.js internals
   if (
     pathname.startsWith("/_next") ||
     pathname.startsWith("/favicon") ||
@@ -23,7 +29,6 @@ export async function middleware(req: NextRequest) {
   const session = await getSessionFromRequest(req);
 
   if (!session) {
-    // API routes return 401, pages redirect to login
     if (pathname.startsWith("/api/")) {
       return NextResponse.json(
         { success: false, error: "Unauthorized. Please log in." },
@@ -35,7 +40,6 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  // Inject user info into request headers for downstream use
   const requestHeaders = new Headers(req.headers);
   requestHeaders.set("x-user-id", session.sub);
   requestHeaders.set("x-user-email", session.email);
@@ -45,7 +49,5 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: [
-    "/((?!_next/static|_next/image|favicon.ico).*)",
-  ],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
 };

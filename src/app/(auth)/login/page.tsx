@@ -1,10 +1,13 @@
 "use client";
 
-import { useState, FormEvent } from "react";
-import { useRouter } from "next/navigation";
+import { useState, FormEvent, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 
-export default function LoginPage() {
+function LoginContent() {
   const router = useRouter();
+  const params = useSearchParams();
+  const resetSuccess = params.get("reset") === "1";
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -29,6 +32,11 @@ export default function LoginPage() {
         return;
       }
 
+      if (data.data?.user?.emailVerified === false) {
+        router.push(`/verify-email?email=${encodeURIComponent(email)}`);
+        return;
+      }
+
       router.push("/entries");
       router.refresh();
     } catch {
@@ -50,44 +58,41 @@ export default function LoginPage() {
         <div className="divider" />
 
         <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          {resetSuccess && (
+            <div className="alert alert-success">Password reset successfully. Please log in.</div>
+          )}
           {error && <div className="alert alert-error">{error}</div>}
 
           <div className="form-group">
             <label className="form-label" htmlFor="email">Email Address</label>
             <input
-              id="email"
-              type="email"
-              className="form-input"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@imd.gov.in"
-              autoComplete="email"
-              required
-              disabled={loading}
+              id="email" type="email" className="form-input"
+              value={email} onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@imd.gov.in" autoComplete="email"
+              required disabled={loading}
             />
           </div>
 
           <div className="form-group">
-            <label className="form-label" htmlFor="password">Password</label>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <label className="form-label" htmlFor="password">Password</label>
+              <a href="/forgot-password" style={{
+                fontSize: "0.72rem", color: "var(--text-muted)",
+                textDecoration: "none", fontFamily: "var(--font-mono)",
+              }}>
+                Forgot password?
+              </a>
+            </div>
             <input
-              id="password"
-              type="password"
-              className="form-input"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              autoComplete="current-password"
-              required
-              disabled={loading}
+              id="password" type="password" className="form-input"
+              value={password} onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••••" autoComplete="current-password"
+              required disabled={loading}
             />
           </div>
 
-          <button
-            type="submit"
-            className="btn btn-primary"
-            disabled={loading}
-            style={{ marginTop: 6, justifyContent: "center", padding: "10px" }}
-          >
+          <button type="submit" className="btn btn-primary" disabled={loading}
+            style={{ marginTop: 6, justifyContent: "center", padding: "10px" }}>
             {loading ? "Signing in…" : "Sign In"}
           </button>
         </form>
@@ -99,5 +104,13 @@ export default function LoginPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginContent />
+    </Suspense>
   );
 }

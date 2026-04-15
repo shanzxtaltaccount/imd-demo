@@ -31,6 +31,7 @@ export async function POST(req: NextRequest) {
         name: true,
         role: true,
         passwordHash: true,
+        emailVerified: true,
         isActive: true,
       },
     });
@@ -53,7 +54,7 @@ export async function POST(req: NextRequest) {
     });
 
     const response = ok({
-      user: { id: user.id, email: user.email, name: user.name, role: user.role },
+      user: { id: user.id, email: user.email, name: user.name, role: user.role, emailVerified: user.emailVerified },
     });
 
     response.cookies.set(COOKIE_NAME, token, {
