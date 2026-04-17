@@ -1,8 +1,5 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  outputFileTracingIncludes: {
-    "/api/**/*": ["./node_modules/.prisma/client/**"],
-  },
   async headers() {
     return [
       {
@@ -16,9 +13,6 @@ const nextConfig = {
         ],
       },
     ];
-  },
-  experimental: {
-    optimizePackageImports: ["@prisma/client"],
   },
 };
 
