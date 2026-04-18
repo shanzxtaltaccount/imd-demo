@@ -21,7 +21,7 @@ function AdminContent() {
   const [showForm, setShowForm] = useState(false);
   const [toggleTarget, setToggleTarget] = useState<User | null>(null);
 
-  // Step 1 form state
+  // Create user form state
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -29,12 +29,20 @@ function AdminContent() {
   const [formError, setFormError] = useState("");
   const [formLoading, setFormLoading] = useState(false);
 
-  // Step 2 OTP state
+  // Create user OTP step
   const [step, setStep] = useState<1 | 2>(1);
   const [otp, setOtp] = useState("");
   const [otpError, setOtpError] = useState("");
   const [otpLoading, setOtpLoading] = useState(false);
   const [resending, setResending] = useState(false);
+
+  // Delete flow state
+  const [deleteTarget, setDeleteTarget] = useState<User | null>(null);
+  const [deleteStep, setDeleteStep] = useState<"confirm" | "otp">("confirm");
+  const [deleteOtp, setDeleteOtp] = useState("");
+  const [deleteOtpError, setDeleteOtpError] = useState("");
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteSending, setDeleteSending] = useState(false);
 
   async function fetchUsers() {
     setLoading(true);
@@ -54,7 +62,14 @@ function AdminContent() {
     setShowForm(false);
   }
 
-  // Step 1: create inactive user + send OTP
+  function resetDelete() {
+    setDeleteTarget(null);
+    setDeleteStep("confirm");
+    setDeleteOtp("");
+    setDeleteOtpError("");
+  }
+
+  // Create user — Step 1
   async function handleCreate(e: FormEvent) {
     e.preventDefault();
     setFormError("");
@@ -67,13 +82,12 @@ function AdminContent() {
       });
       const data = await res.json();
       if (!data.success) { setFormError(data.error); return; }
-      // Move to OTP step
       setStep(2);
     } catch { setFormError("Network error."); }
     finally { setFormLoading(false); }
   }
 
-  // Step 2: confirm OTP to activate account
+  // Create user — Step 2 OTP confirm
   async function handleOtpConfirm(e: FormEvent) {
     e.preventDefault();
     setOtpError("");
@@ -105,6 +119,45 @@ function AdminContent() {
       toast("OTP resent.", "success");
     } catch { setOtpError("Failed to resend OTP."); }
     finally { setResending(false); }
+  }
+
+  // Delete — Step 1: send OTP to admin
+  async function handleDeleteRequest(user: User) {
+    setDeleteTarget(user);
+    setDeleteStep("confirm");
+  }
+
+  async function handleDeleteConfirm() {
+    setDeleteSending(true);
+    setDeleteOtpError("");
+    try {
+      const res = await fetch("/api/admin/users/delete-otp", { method: "POST" });
+      const data = await res.json();
+      if (!data.success) { setDeleteOtpError(data.error); return; }
+      setDeleteStep("otp");
+    } catch { setDeleteOtpError("Network error."); }
+    finally { setDeleteSending(false); }
+  }
+
+  // Delete — Step 2: verify OTP and delete
+  async function handleDeleteOtpSubmit(e: FormEvent) {
+    e.preventDefault();
+    if (!deleteTarget) return;
+    setDeleteLoading(true);
+    setDeleteOtpError("");
+    try {
+      const res = await fetch(`/api/admin/users/${deleteTarget.id}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: deleteOtp }),
+      });
+      const data = await res.json();
+      if (!data.success) { setDeleteOtpError(data.error); return; }
+      toast(`${deleteTarget.name} has been deleted.`, "success");
+      resetDelete();
+      fetchUsers();
+    } catch { setDeleteOtpError("Network error."); }
+    finally { setDeleteLoading(false); }
   }
 
   async function toggleActive(user: User) {
@@ -176,12 +229,18 @@ function AdminContent() {
                   <td className="td-mono" style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>
                     {new Date(user.createdAt).toLocaleDateString("en-IN")}
                   </td>
-                  <td>
+                  <td style={{ display: "flex", gap: 6 }}>
                     <button
                       className={`btn btn-sm ${user.isActive ? "btn-danger" : "btn-secondary"}`}
                       onClick={() => setToggleTarget(user)}
                     >
                       {user.isActive ? "Deactivate" : "Activate"}
+                    </button>
+                    <button
+                      className="btn btn-sm btn-danger"
+                      onClick={() => handleDeleteRequest(user)}
+                    >
+                      Delete
                     </button>
                   </td>
                 </tr>
@@ -191,7 +250,7 @@ function AdminContent() {
         </div>
       </div>
 
-      {/* Modal — Step 1: Create User */}
+      {/* Create User — Step 1 */}
       {showForm && step === 1 && (
         <div className="modal-overlay" onClick={resetForm}>
           <div className="modal" style={{ maxWidth: 480 }} onClick={e => e.stopPropagation()}>
@@ -239,9 +298,7 @@ function AdminContent() {
                 </p>
               </div>
               <div className="modal-footer">
-                <button type="button" className="btn btn-secondary" onClick={resetForm} disabled={formLoading}>
-                  Cancel
-                </button>
+                <button type="button" className="btn btn-secondary" onClick={resetForm} disabled={formLoading}>Cancel</button>
                 <button type="submit" className="btn btn-primary" disabled={formLoading}>
                   {formLoading ? "Sending OTP…" : "Send OTP & Continue"}
                 </button>
@@ -251,12 +308,12 @@ function AdminContent() {
         </div>
       )}
 
-      {/* Modal — Step 2: Enter OTP */}
+      {/* Create User — Step 2 OTP */}
       {showForm && step === 2 && (
         <div className="modal-overlay">
           <div className="modal" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <h2>Verify Email</h2>
+              <h2>Verify New User Email</h2>
             </div>
             <form onSubmit={handleOtpConfirm}>
               <div className="modal-body" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -272,10 +329,7 @@ function AdminContent() {
                     className="form-input"
                     value={otp}
                     onChange={e => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                    placeholder="000000"
-                    maxLength={6}
-                    required
-                    autoFocus
+                    placeholder="000000" maxLength={6} required autoFocus
                     style={{ fontFamily: "var(--font-mono)", fontSize: "1.4rem", letterSpacing: "0.3em", textAlign: "center" }}
                   />
                 </div>
@@ -286,11 +340,74 @@ function AdminContent() {
                 </button>
               </div>
               <div className="modal-footer">
-                <button type="button" className="btn btn-secondary" onClick={resetForm} disabled={otpLoading}>
-                  Cancel
-                </button>
+                <button type="button" className="btn btn-secondary" onClick={resetForm} disabled={otpLoading}>Cancel</button>
                 <button type="submit" className="btn btn-primary" disabled={otpLoading || otp.length !== 6}>
                   {otpLoading ? "Verifying…" : "Verify & Create Account"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete — Step 1: confirm intent */}
+      {deleteTarget && deleteStep === "confirm" && (
+        <div className="modal-overlay" onClick={resetDelete}>
+          <div className="modal" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Delete User</h2>
+            </div>
+            <div className="modal-body" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              {deleteOtpError && <div className="alert alert-error">{deleteOtpError}</div>}
+              <p style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>
+                You are about to permanently delete{" "}
+                <strong style={{ color: "var(--text-primary)" }}>{deleteTarget.name}</strong>{" "}
+                (<span style={{ fontFamily: "var(--font-mono)", fontSize: "0.78rem" }}>{deleteTarget.email}</span>).
+                This will also delete all their log entries and cannot be undone.
+              </p>
+              <p style={{ fontSize: "0.78rem", color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
+                An OTP will be sent to your admin email to confirm this action.
+              </p>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-secondary" onClick={resetDelete} disabled={deleteSending}>Cancel</button>
+              <button className="btn btn-danger" onClick={handleDeleteConfirm} disabled={deleteSending}>
+                {deleteSending ? "Sending OTP…" : "Send OTP & Continue"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete — Step 2: enter OTP */}
+      {deleteTarget && deleteStep === "otp" && (
+        <div className="modal-overlay">
+          <div className="modal" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Confirm Deletion</h2>
+            </div>
+            <form onSubmit={handleDeleteOtpSubmit}>
+              <div className="modal-body" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                {deleteOtpError && <div className="alert alert-error">{deleteOtpError}</div>}
+                <p style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>
+                  Enter the OTP sent to your admin email to confirm deletion of{" "}
+                  <strong style={{ color: "var(--text-primary)" }}>{deleteTarget.name}</strong>.
+                </p>
+                <div className="form-group">
+                  <label className="form-label">6-Digit OTP</label>
+                  <input
+                    className="form-input"
+                    value={deleteOtp}
+                    onChange={e => setDeleteOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                    placeholder="000000" maxLength={6} required autoFocus
+                    style={{ fontFamily: "var(--font-mono)", fontSize: "1.4rem", letterSpacing: "0.3em", textAlign: "center" }}
+                  />
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button type="button" className="btn btn-secondary" onClick={resetDelete} disabled={deleteLoading}>Cancel</button>
+                <button type="submit" className="btn btn-danger" disabled={deleteLoading || deleteOtp.length !== 6}>
+                  {deleteLoading ? "Deleting…" : "Confirm Delete"}
                 </button>
               </div>
             </form>
