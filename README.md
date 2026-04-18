@@ -5,7 +5,7 @@ Built with Next.js 14 (App Router), Prisma, PostgreSQL (Neon), and deployed on V
 
 ---
 
-## Architecture Overvieww
+## Architecture Overview
 
 ```
 src/
