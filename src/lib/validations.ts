@@ -57,7 +57,7 @@ export const EntryUpdateSchema = EntryCreateSchema.partial();
 
 export const EntryFilterSchema = z.object({
   page: z.coerce.number().int().positive().default(1),
-  limit: z.coerce.number().int().min(10).max(100).default(25),
+  limit: z.coerce.number().int().min(10).max(5000).default(25),
   category: z.enum(CATEGORIES).optional(),
   vendor: z.string().max(200).optional(),
   from: z

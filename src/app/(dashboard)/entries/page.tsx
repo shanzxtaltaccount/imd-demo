@@ -50,7 +50,9 @@ function EntriesContent() {
   const [editEntry, setEditEntry] = useState<Entry | null>(null);
   const [viewEntry, setViewEntry] = useState<Entry | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+
   const [pdfLoading, setPdfLoading] = useState(false);
+  const [pdfProgress, setPdfProgress] = useState<string | null>(null);
 
   const searchTimerRef = useRef<ReturnType<typeof setTimeout>>();
 
@@ -102,20 +104,35 @@ function EntriesContent() {
 
   async function handleDownloadPDF() {
     setPdfLoading(true);
-    try {
-      // Fetch ALL entries matching current filters (no pagination)
-      const qs = new URLSearchParams({
-        page: "1", limit: "1000",
-        ...(search && { search }),
-        ...(category && { category }),
-        ...(from && { from }),
-        ...(to && { to }),
-      });
-      const res = await fetch(`/api/entries?${qs}`);
-      const data = await res.json();
-      if (!data.success) { toast("Failed to fetch entries for PDF.", "error"); return; }
+    setPdfProgress("Starting…");
+    const BATCH_SIZE = 500;
+    let allEntries: Entry[] = [];
+    let currentPage = 1;
+    let totalPages = 1;
+    let totalCount = 0;
 
-      const allEntries: Entry[] = data.data.entries;
+    try {
+      do {
+        const qs = new URLSearchParams({
+          page: String(currentPage),
+          limit: String(BATCH_SIZE),
+          ...(search && { search }),
+          ...(category && { category }),
+          ...(from && { from }),
+          ...(to && { to }),
+        });
+        const res = await fetch(`/api/entries?${qs}`);
+        const data = await res.json();
+        if (!data.success) { toast("Failed to fetch entries for PDF.", "error"); return; }
+        allEntries = [...allEntries, ...data.data.entries];
+        totalPages = data.data.pagination.totalPages;
+        totalCount = data.data.pagination.total;
+        setPdfProgress(`Fetching ${Math.min(currentPage * BATCH_SIZE, totalCount)} of ${totalCount}…`);
+        currentPage++;
+      } while (currentPage <= totalPages);
+
+      setPdfProgress("Generating PDF…");
+
       const total = allEntries.reduce((sum, e) => sum + Number(e.totalPrice), 0);
       const now = new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric" });
       const filterDesc = [
@@ -150,11 +167,12 @@ function EntriesContent() {
     .mono { font-family: 'IBM Plex Mono', monospace; font-size: 10px; }
     .amount { text-align: right; font-family: 'IBM Plex Mono', monospace; }
     .category { font-size: 9px; background: #e8eaf0; padding: 2px 6px; border-radius: 3px; font-family: 'IBM Plex Mono', monospace; display: inline-block; }
-    .footer { margin-top: 20px; padding-top: 12px; border-top: 1px solid #ddd; display: flex; justify-content: space-between; align-items: center; }
     .total-row { background: #1a1a2e !important; }
     .total-row td { color: white; font-weight: 600; border-bottom: none; background: #1a1a2e !important; }
     .total-label { font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.08em; }
+    .footer { margin-top: 20px; padding-top: 12px; border-top: 1px solid #ddd; display: flex; justify-content: space-between; }
     .stamp { font-size: 8px; color: #aaa; font-family: 'IBM Plex Mono', monospace; }
+    @media print { body { padding: 16px; } }
   </style>
 </head>
 <body>
@@ -172,15 +190,9 @@ function EntriesContent() {
   <table>
     <thead>
       <tr>
-        <th>Date</th>
-        <th>Item</th>
-        <th>Category</th>
-        <th>Qty</th>
-        <th class="right">Unit Price</th>
-        <th class="right">Total</th>
-        <th>Vendor</th>
-        <th>Invoice</th>
-        <th>By</th>
+        <th>Date</th><th>Item</th><th>Category</th><th>Qty</th>
+        <th class="right">Unit Price</th><th class="right">Total</th>
+        <th>Vendor</th><th>Invoice</th><th>By</th>
       </tr>
     </thead>
     <tbody>
@@ -206,7 +218,7 @@ function EntriesContent() {
   </table>
   <div class="footer">
     <span class="stamp">RESTRICTED · INDIAN METEOROLOGICAL DEPARTMENT · PUNE REGION</span>
-    <span class="stamp">This is a system-generated report from IMD Store Log System</span>
+    <span class="stamp">System-generated report from IMD Store Log System</span>
   </div>
 </body>
 </html>`;
@@ -216,8 +228,9 @@ function EntriesContent() {
       win.document.write(html);
       win.document.close();
       win.onload = () => { win.print(); };
+
     } catch { toast("Failed to generate PDF.", "error"); }
-    finally { setPdfLoading(false); }
+    finally { setPdfLoading(false); setPdfProgress(null); }
   }
 
   return (
@@ -234,7 +247,7 @@ function EntriesContent() {
               <polyline points="7 10 12 15 17 10"/>
               <line x1="12" y1="15" x2="12" y2="3"/>
             </svg>
-            {pdfLoading ? "Preparing…" : "Download PDF"}
+            {pdfLoading ? (pdfProgress ?? "Preparing…") : "Download PDF"}
           </button>
           <button className="btn btn-primary" onClick={() => { setEditEntry(null); setShowForm(true); }}>
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
@@ -280,7 +293,9 @@ function EntriesContent() {
               {loading ? (
                 <tr className="loading-row"><td colSpan={10}>Loading…</td></tr>
               ) : entries.length === 0 ? (
-                <tr><td colSpan={10}><div className="empty-state"><div className="empty-icon">📋</div><p>No entries found.</p></div></td></tr>
+                <tr><td colSpan={10}>
+                  <div className="empty-state"><div className="empty-icon">📋</div><p>No entries found.</p></div>
+                </td></tr>
               ) : entries.map((entry) => (
                 <tr key={entry.id}>
                   <td className="td-mono">{formatDate(entry.purchaseDate)}</td>
@@ -341,8 +356,12 @@ function EntriesContent() {
       {showForm && <EntryFormModal entry={editEntry} onSuccess={onFormSuccess} onClose={() => { setShowForm(false); setEditEntry(null); }} />}
       {viewEntry && <EntryDetailModal entry={viewEntry} onClose={() => setViewEntry(null)} />}
       {deleteId && (
-        <ConfirmDialog message="Are you sure you want to delete this entry? This action can be reversed by the administrator."
-          confirmLabel="Delete Entry" danger onConfirm={() => handleDelete(deleteId)} onCancel={() => setDeleteId(null)} />
+        <ConfirmDialog
+          message="Are you sure you want to delete this entry? This action can be reversed by the administrator."
+          confirmLabel="Delete Entry" danger
+          onConfirm={() => handleDelete(deleteId)}
+          onCancel={() => setDeleteId(null)}
+        />
       )}
     </>
   );
