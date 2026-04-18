@@ -21,13 +21,20 @@ function AdminContent() {
   const [showForm, setShowForm] = useState(false);
   const [toggleTarget, setToggleTarget] = useState<User | null>(null);
 
-  // Form state
+  // Step 1 form state
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<"ADMIN" | "STAFF">("STAFF");
   const [formError, setFormError] = useState("");
   const [formLoading, setFormLoading] = useState(false);
+
+  // Step 2 OTP state
+  const [step, setStep] = useState<1 | 2>(1);
+  const [otp, setOtp] = useState("");
+  const [otpError, setOtpError] = useState("");
+  const [otpLoading, setOtpLoading] = useState(false);
+  const [resending, setResending] = useState(false);
 
   async function fetchUsers() {
     setLoading(true);
@@ -41,6 +48,13 @@ function AdminContent() {
 
   useEffect(() => { fetchUsers(); }, []); // eslint-disable-line
 
+  function resetForm() {
+    setName(""); setEmail(""); setPassword(""); setRole("STAFF");
+    setFormError(""); setOtp(""); setOtpError(""); setStep(1);
+    setShowForm(false);
+  }
+
+  // Step 1: create inactive user + send OTP
   async function handleCreate(e: FormEvent) {
     e.preventDefault();
     setFormError("");
@@ -53,12 +67,44 @@ function AdminContent() {
       });
       const data = await res.json();
       if (!data.success) { setFormError(data.error); return; }
-      toast(`User ${name} created. They must verify their email before logging in.`);
-      setShowForm(false);
-      setName(""); setEmail(""); setPassword(""); setRole("STAFF");
-      fetchUsers();
+      // Move to OTP step
+      setStep(2);
     } catch { setFormError("Network error."); }
     finally { setFormLoading(false); }
+  }
+
+  // Step 2: confirm OTP to activate account
+  async function handleOtpConfirm(e: FormEvent) {
+    e.preventDefault();
+    setOtpError("");
+    setOtpLoading(true);
+    try {
+      const res = await fetch("/api/admin/users/confirm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, code: otp }),
+      });
+      const data = await res.json();
+      if (!data.success) { setOtpError(data.error); return; }
+      toast(`User ${name} created and verified successfully.`, "success");
+      resetForm();
+      fetchUsers();
+    } catch { setOtpError("Network error."); }
+    finally { setOtpLoading(false); }
+  }
+
+  async function handleResendOtp() {
+    setResending(true);
+    setOtpError("");
+    try {
+      await fetch("/api/auth/send-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, type: "EMAIL_VERIFY" }),
+      });
+      toast("OTP resent.", "success");
+    } catch { setOtpError("Failed to resend OTP."); }
+    finally { setResending(false); }
   }
 
   async function toggleActive(user: User) {
@@ -83,7 +129,7 @@ function AdminContent() {
           <h1>User Management</h1>
           <div className="subtitle">{users.length} user{users.length !== 1 ? "s" : ""} registered</div>
         </div>
-        <button className="btn btn-primary" onClick={() => setShowForm(true)}>
+        <button className="btn btn-primary" onClick={() => { resetForm(); setShowForm(true); }}>
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
             <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
           </svg>
@@ -145,13 +191,13 @@ function AdminContent() {
         </div>
       </div>
 
-      {/* Create user modal */}
-      {showForm && (
-        <div className="modal-overlay" onClick={() => setShowForm(false)}>
+      {/* Modal — Step 1: Create User */}
+      {showForm && step === 1 && (
+        <div className="modal-overlay" onClick={resetForm}>
           <div className="modal" style={{ maxWidth: 480 }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h2>Create New User</h2>
-              <button className="btn btn-ghost btn-sm" onClick={() => setShowForm(false)}>
+              <button className="btn btn-ghost btn-sm" onClick={resetForm}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
                 </svg>
@@ -160,21 +206,18 @@ function AdminContent() {
             <form onSubmit={handleCreate}>
               <div className="modal-body" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
                 {formError && <div className="alert alert-error">{formError}</div>}
-
                 <div className="form-group">
                   <label className="form-label">Full Name *</label>
                   <input className="form-input" value={name}
                     onChange={e => setName(e.target.value)} placeholder="e.g. Rajesh Kumar"
                     required maxLength={100} />
                 </div>
-
                 <div className="form-group">
                   <label className="form-label">Email Address *</label>
                   <input type="email" className="form-input" value={email}
                     onChange={e => setEmail(e.target.value)} placeholder="user@imd.gov.in"
                     required />
                 </div>
-
                 <div className="form-grid">
                   <div className="form-group">
                     <label className="form-label">Initial Password *</label>
@@ -191,18 +234,63 @@ function AdminContent() {
                     </select>
                   </div>
                 </div>
-
                 <p style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
-                  A verification OTP will be sent to the user's email after creation.
+                  A 6-digit OTP will be sent to the user's email. The account activates only after OTP is verified.
                 </p>
               </div>
               <div className="modal-footer">
-                <button type="button" className="btn btn-secondary"
-                  onClick={() => setShowForm(false)} disabled={formLoading}>
+                <button type="button" className="btn btn-secondary" onClick={resetForm} disabled={formLoading}>
                   Cancel
                 </button>
                 <button type="submit" className="btn btn-primary" disabled={formLoading}>
-                  {formLoading ? "Creating…" : "Create User"}
+                  {formLoading ? "Sending OTP…" : "Send OTP & Continue"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal — Step 2: Enter OTP */}
+      {showForm && step === 2 && (
+        <div className="modal-overlay">
+          <div className="modal" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Verify Email</h2>
+            </div>
+            <form onSubmit={handleOtpConfirm}>
+              <div className="modal-body" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                {otpError && <div className="alert alert-error">{otpError}</div>}
+                <p style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>
+                  An OTP was sent to{" "}
+                  <strong style={{ color: "var(--text-secondary)", fontFamily: "var(--font-mono)" }}>{email}</strong>.
+                  Enter it below to activate the account.
+                </p>
+                <div className="form-group">
+                  <label className="form-label">6-Digit OTP</label>
+                  <input
+                    className="form-input"
+                    value={otp}
+                    onChange={e => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                    placeholder="000000"
+                    maxLength={6}
+                    required
+                    autoFocus
+                    style={{ fontFamily: "var(--font-mono)", fontSize: "1.4rem", letterSpacing: "0.3em", textAlign: "center" }}
+                  />
+                </div>
+                <button type="button" className="btn btn-ghost"
+                  style={{ justifyContent: "center", fontSize: "0.78rem" }}
+                  onClick={handleResendOtp} disabled={resending}>
+                  {resending ? "Resending…" : "Resend OTP"}
+                </button>
+              </div>
+              <div className="modal-footer">
+                <button type="button" className="btn btn-secondary" onClick={resetForm} disabled={otpLoading}>
+                  Cancel
+                </button>
+                <button type="submit" className="btn btn-primary" disabled={otpLoading || otp.length !== 6}>
+                  {otpLoading ? "Verifying…" : "Verify & Create Account"}
                 </button>
               </div>
             </form>
