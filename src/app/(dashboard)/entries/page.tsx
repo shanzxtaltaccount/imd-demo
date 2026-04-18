@@ -190,7 +190,7 @@ function EntriesContent() {
   <table>
     <thead>
       <tr>
-        <th>Date</th><th>Item</th><th>Category</th><th>Qty</th>
+        <th>Date</th><th>Time</th><th>Item</th><th>Category</th><th>Qty</th>
         <th class="right">Unit Price</th><th class="right">Total</th>
         <th>Vendor</th><th>Invoice</th><th>By</th>
       </tr>
@@ -199,6 +199,7 @@ function EntriesContent() {
       ${allEntries.map(e => `
         <tr>
           <td class="mono">${formatDate(e.purchaseDate)}</td>
+          <td class="mono" style="font-size:9px;color:#888">${new Date(e.createdAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Kolkata" })}</td>
           <td style="font-weight:500;max-width:140px">${e.itemName}</td>
           <td><span class="category">${CATEGORY_LABELS[e.category as keyof typeof CATEGORY_LABELS] ?? e.category}</span></td>
           <td class="mono">${e.quantity} ${e.unit}</td>
@@ -210,7 +211,7 @@ function EntriesContent() {
         </tr>
       `).join("")}
       <tr class="total-row">
-        <td colspan="5" class="total-label">GRAND TOTAL</td>
+        <td colspan="6" class="total-label">GRAND TOTAL</td>
         <td class="amount">${formatINR(total)}</td>
         <td colspan="3"></td>
       </tr>
@@ -283,7 +284,9 @@ function EntriesContent() {
           <table>
             <thead>
               <tr>
-                <th>Date</th><th>Item</th><th>Category</th><th>Qty</th>
+                <th>Date</th>
+                <th style={{ fontSize: "0.72rem" }}>Time</th>
+                <th>Item</th><th>Category</th><th>Qty</th>
                 <th style={{ textAlign: "right" }}>Unit Price</th>
                 <th style={{ textAlign: "right" }}>Total</th>
                 <th>Vendor</th><th>Invoice</th><th>By</th><th></th>
@@ -291,14 +294,19 @@ function EntriesContent() {
             </thead>
             <tbody>
               {loading ? (
-                <tr className="loading-row"><td colSpan={10}>Loading…</td></tr>
+                <tr className="loading-row"><td colSpan={11}>Loading…</td></tr>
               ) : entries.length === 0 ? (
-                <tr><td colSpan={10}>
+                <tr><td colSpan={11}>
                   <div className="empty-state"><div className="empty-icon">📋</div><p>No entries found.</p></div>
                 </td></tr>
               ) : entries.map((entry) => (
                 <tr key={entry.id}>
                   <td className="td-mono">{formatDate(entry.purchaseDate)}</td>
+                  <td className="td-mono" style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>
+                    {new Date(entry.createdAt).toLocaleTimeString("en-IN", {
+                      hour: "2-digit", minute: "2-digit", timeZone: "Asia/Kolkata"
+                    })}
+                  </td>
                   <td>
                     <button className="btn btn-ghost btn-sm"
                       style={{ padding: "2px 0", textAlign: "left", fontWeight: 500, color: "var(--text-primary)" }}
