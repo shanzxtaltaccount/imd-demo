@@ -29,7 +29,6 @@ export async function GET(req: NextRequest) {
         ? {
             purchaseDate: {
               ...(from && { gte: new Date(from) }),
-              // 🟠 Fix #6: include the full "to" day, not just midnight
               ...(to && { lte: new Date(to + "T23:59:59.999Z") }),
             },
           }
@@ -102,7 +101,6 @@ export async function POST(req: NextRequest) {
     const data = parsed.data;
     const totalPrice = Math.round(data.quantity * data.unitPrice * 100) / 100;
 
-    // 🟢 Fix #11: create entry + audit log in a transaction
     const entry = await prisma.$transaction(async (tx) => {
       const created = await tx.entry.create({
         data: {
@@ -137,7 +135,7 @@ export async function POST(req: NextRequest) {
             category: created.category,
             invoiceNumber: created.invoiceNumber ?? null,
             notes: created.notes ?? null,
-          },
+          } as object,
         },
       });
 

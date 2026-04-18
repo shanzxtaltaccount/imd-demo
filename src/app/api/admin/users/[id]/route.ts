@@ -46,7 +46,6 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       updateData.passwordHash = await bcrypt.hash(parsed.data.password, 12);
     }
 
-    // 🟢 Fix #11: update + audit log in a transaction
     const updated = await prisma.$transaction(async (tx) => {
       const result = await tx.user.update({
         where: { id },
@@ -61,8 +60,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
         },
       });
 
-      // Build diff — only log what actually changed, never log passwordHash
-      const diff: Record<string, { from: unknown; to: unknown }> = {};
+      const diff: Record<string, unknown> = {};
       if (parsed.data.isActive !== undefined && parsed.data.isActive !== user.isActive) {
         diff.isActive = { from: user.isActive, to: parsed.data.isActive };
       }
@@ -79,7 +77,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
           action: "UPDATE",
           entityType: "User",
           entityId: id,
-          diff,
+          diff: diff as object,
         },
       });
 
@@ -143,9 +141,7 @@ export async function DELETE(req: NextRequest, { params }: Params) {
       data: { usedAt: new Date() },
     });
 
-    // 🟢 Fix #11: delete + audit log — audit log written BEFORE deleting
-    // so we capture who was deleted. Written outside transaction since
-    // the user record must be deleted; audit log must survive.
+    // Audit log written BEFORE deleting so the user record still exists
     await prisma.auditLog.create({
       data: {
         userId: currentUserId,
@@ -156,7 +152,7 @@ export async function DELETE(req: NextRequest, { params }: Params) {
           email: user.email,
           name: user.name,
           role: user.role,
-        },
+        } as object,
       },
     });
 

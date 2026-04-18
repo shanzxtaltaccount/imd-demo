@@ -21,7 +21,6 @@ export async function GET(_req: NextRequest) {
     const currentUserId = headersList.get("x-user-id");
     if (!currentUserId) return forbidden();
 
-    // 🔴 Fix #4: live DB role check — JWT role could be stale
     const currentUser = await prisma.user.findUnique({
       where: { id: currentUserId },
       select: { role: true },
@@ -55,7 +54,6 @@ export async function POST(req: NextRequest) {
     const currentUserId = headersList.get("x-user-id");
     if (!currentUserId) return forbidden();
 
-    // 🔴 Fix #4: live DB role check
     const currentUser = await prisma.user.findUnique({
       where: { id: currentUserId },
       select: { role: true },
@@ -75,7 +73,6 @@ export async function POST(req: NextRequest) {
 
     const passwordHash = await bcrypt.hash(password, 12);
 
-    // 🟢 Fix #11: user create + audit log in a transaction
     const user = await prisma.$transaction(async (tx) => {
       const created = await tx.user.create({
         data: {
@@ -95,7 +92,11 @@ export async function POST(req: NextRequest) {
           action: "CREATE",
           entityType: "User",
           entityId: created.id,
-          diff: { email: created.email, name: created.name, role: created.role },
+          diff: {
+            email: created.email,
+            name: created.name,
+            role: created.role,
+          } as object,
         },
       });
 

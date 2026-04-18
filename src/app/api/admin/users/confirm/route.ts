@@ -16,7 +16,6 @@ export async function POST(req: NextRequest) {
     const currentUserId = headersList.get("x-user-id");
     if (!currentUserId) return forbidden();
 
-    // 🔴 Fix #4: live DB role check
     const currentUser = await prisma.user.findUnique({
       where: { id: currentUserId },
       select: { role: true },
@@ -29,7 +28,6 @@ export async function POST(req: NextRequest) {
 
     const { email, code } = parsed.data;
 
-    // 🔴 Fix #3: OTP lockout
     if (checkOTPLockout(email, "EMAIL_VERIFY")) {
       return err("Too many failed attempts. Please resend OTP and try again.", 429);
     }
@@ -42,7 +40,6 @@ export async function POST(req: NextRequest) {
 
     clearOTPFailures(email, "EMAIL_VERIFY");
 
-    // 🟢 Fix #11: activate user + audit log in a transaction
     await prisma.$transaction(async (tx) => {
       await tx.user.update({
         where: { id: userId },
@@ -58,7 +55,7 @@ export async function POST(req: NextRequest) {
           diff: {
             emailVerified: { from: false, to: true },
             isActive: { from: false, to: true },
-          },
+          } as object,
         },
       });
     });

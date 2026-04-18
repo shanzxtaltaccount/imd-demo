@@ -27,7 +27,6 @@ export async function GET(_req: NextRequest, { params }: Params) {
 export async function PATCH(req: NextRequest, { params }: Params) {
   try {
     const { id } = await params;
-    // 🟠 Fix #5: await headers()
     const headersList = await headers();
     const userId = headersList.get("x-user-id");
     if (!userId) return err("Unauthorized", 401);
@@ -49,7 +48,6 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       data.unitPrice !== undefined ? data.unitPrice : Number(existing.unitPrice);
     const totalPrice = Math.round(newQty * newUnitPrice * 100) / 100;
 
-    // 🟢 Fix #11: update + audit log in a transaction
     const updated = await prisma.$transaction(async (tx) => {
       const result = await tx.entry.update({
         where: { id },
@@ -60,18 +58,15 @@ export async function PATCH(req: NextRequest, { params }: Params) {
         },
       });
 
-      // Build a diff of only the fields that actually changed
-      const diff: Record<string, { from: unknown; to: unknown }> = {};
+      const diff: Record<string, unknown> = {};
       const fields = Object.keys(data) as (keyof typeof data)[];
       for (const field of fields) {
         const before = existing[field as keyof typeof existing];
         const after = result[field as keyof typeof result];
-        // Compare as strings to handle Decimal vs number safely
         if (String(before) !== String(after)) {
           diff[field] = { from: before, to: after };
         }
       }
-      // Always record totalPrice change if qty or unitPrice changed
       if (data.quantity !== undefined || data.unitPrice !== undefined) {
         diff.totalPrice = {
           from: Number(existing.totalPrice),
@@ -85,7 +80,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
           action: "UPDATE",
           entityType: "Entry",
           entityId: id,
-          diff,
+          diff: diff as object,
         },
       });
 
@@ -102,7 +97,6 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 export async function DELETE(_req: NextRequest, { params }: Params) {
   try {
     const { id } = await params;
-    // 🟠 Fix #5: await headers()
     const headersList = await headers();
     const userId = headersList.get("x-user-id");
     if (!userId) return err("Unauthorized", 401);
@@ -112,7 +106,6 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
     });
     if (!existing) return notFound("Entry");
 
-    // 🟢 Fix #11: soft delete + audit log in a transaction
     await prisma.$transaction(async (tx) => {
       await tx.entry.update({
         where: { id },
@@ -129,7 +122,7 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
             itemName: existing.itemName,
             totalPrice: Number(existing.totalPrice),
             vendorName: existing.vendorName,
-          },
+          } as object,
         },
       });
     });
