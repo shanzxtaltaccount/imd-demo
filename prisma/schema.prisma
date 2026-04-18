@@ -2,7 +2,7 @@
 // PostgreSQL via Neon (serverless)
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
   binaryTargets = ["native", "rhel-openssl-3.0.x"]
 }
 
@@ -19,11 +19,14 @@ model User {
   role           Role      @default(STAFF)
   isActive       Boolean   @default(true) @map("is_active")
   emailVerified  Boolean   @default(false) @map("email_verified")
+  // 🟢 Fix #14: track last login
+  lastLoginAt    DateTime? @map("last_login_at")
   createdAt      DateTime  @default(now()) @map("created_at")
   updatedAt      DateTime  @updatedAt @map("updated_at")
 
   entries            Entry[]
   verificationTokens VerificationToken[]
+  auditLogs          AuditLog[]
 
   @@map("users")
 }
@@ -62,11 +65,30 @@ model Entry {
   createdById String @map("created_by_id")
   createdBy   User   @relation(fields: [createdById], references: [id])
 
-  @@index([isDeleted, purchaseDate(sort: Desc)])
+  // 🟡 Fix #9: compound index covers the primary sort + tiebreaker
+  @@index([isDeleted, purchaseDate(sort: Desc), createdAt(sort: Desc)])
   @@index([category, isDeleted])
   @@index([vendorName, isDeleted])
   @@index([createdById])
   @@map("entries")
+}
+
+// 🟢 Fix #11: Audit log — immutable record of all create/update/delete actions
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String   @map("user_id")
+  action     String   // "CREATE" | "UPDATE" | "DELETE"
+  entityType String   @map("entity_type") // "Entry" | "User"
+  entityId   String   @map("entity_id")
+  diff       Json?    // before/after values or snapshot
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([entityType, entityId])
+  @@index([userId])
+  @@index([createdAt])
+  @@map("audit_logs")
 }
 
 enum Role {

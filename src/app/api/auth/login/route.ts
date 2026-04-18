@@ -44,15 +44,19 @@ export async function POST(req: NextRequest) {
       return err("Invalid email or password.", 401);
     }
 
-    // Check email verification — redirect signal for the client
     if (!user.emailVerified) {
       return err("EMAIL_NOT_VERIFIED", 403);
     }
 
-    // Check active status separately for a clear message
     if (!user.isActive) {
       return err("Your account has been deactivated. Contact your administrator.", 403);
     }
+
+    // 🟢 Fix #14: record last login timestamp
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { lastLoginAt: new Date() },
+    });
 
     const token = await signToken({
       sub: user.id,
@@ -71,10 +75,11 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    // 🔴 Fix #2: sameSite strict to prevent CSRF
     response.cookies.set(COOKIE_NAME, token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
+      sameSite: "strict",
       path: "/",
       maxAge: 60 * 60 * 8,
     });

@@ -43,6 +43,19 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
+/** Format a UTC timestamp as "18 Apr 2026, 02:45 PM IST" */
+function formatIST(dt: string | Date): string {
+  return new Date(dt).toLocaleString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+    timeZone: "Asia/Kolkata",
+  }) + " IST";
+}
+
 export default function EntryDetailModal({ entry, onClose }: EntryDetailProps) {
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -70,14 +83,32 @@ export default function EntryDetailModal({ entry, onClose }: EntryDetailProps) {
           <Row label="Vendor" value={entry.vendorName} />
           <Row label="Purchase Date" value={formatDate(entry.purchaseDate)} />
           <Row label="Category" value={<CategoryBadge category={entry.category} />} />
-          {entry.invoiceNumber && <Row label="Invoice No." value={<span className="td-mono">{entry.invoiceNumber}</span>} />}
-          {entry.notes && <Row label="Notes" value={<span style={{ whiteSpace: "pre-wrap" }}>{entry.notes}</span>} />}
-          <Row label="Added By" value={entry.createdBy?.name ?? "—"} />
-          <Row label="Created" value={<span className="td-mono">{formatDate(entry.createdAt)}</span>} />
-          {entry.updatedAt !== entry.createdAt && (
-            <Row label="Last Updated" value={<span className="td-mono">{formatDate(entry.updatedAt)}</span>} />
+          {entry.invoiceNumber && (
+            <Row label="Invoice No." value={<span className="td-mono">{entry.invoiceNumber}</span>} />
           )}
-          <Row label="Entry ID" value={<span className="td-mono" style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>{entry.id}</span>} />
+          {entry.notes && (
+            <Row label="Notes" value={<span style={{ whiteSpace: "pre-wrap" }}>{entry.notes}</span>} />
+          )}
+          <Row label="Added By" value={entry.createdBy?.name ?? "—"} />
+          {/* 🟢 Fix #13: show full IST timestamp, not just date */}
+          <Row
+            label="Created"
+            value={<span className="td-mono">{formatIST(entry.createdAt)}</span>}
+          />
+          {String(entry.updatedAt) !== String(entry.createdAt) && (
+            <Row
+              label="Last Updated"
+              value={<span className="td-mono">{formatIST(entry.updatedAt)}</span>}
+            />
+          )}
+          <Row
+            label="Entry ID"
+            value={
+              <span className="td-mono" style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>
+                {entry.id}
+              </span>
+            }
+          />
         </div>
         <div className="modal-footer">
           <button className="btn btn-secondary" onClick={onClose}>Close</button>

@@ -5,7 +5,7 @@ import { EntryCreateSchema, EntryFilterSchema } from "@/lib/validations";
 import { ok, err, serverError } from "@/lib/api";
 import { Prisma } from "@prisma/client";
 
-// GET /api/entries - list with pagination + filters
+// GET /api/entries
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = req.nextUrl;
@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
         ? {
             purchaseDate: {
               ...(from && { gte: new Date(from) }),
-              ...(to && { lte: new Date(to) }),
+              ...(to && { lte: new Date(to + "T23:59:59.999Z") }),
             },
           }
         : {}),
@@ -47,10 +47,10 @@ export async function GET(req: NextRequest) {
         where,
         skip,
         take: limit,
-        orderBy:[ { purchaseDate: "desc" },
-        { createdAt: 'desc' },
+        orderBy: [
+          { purchaseDate: "desc" },
+          { createdAt: "desc" },
         ],
-
         select: {
           id: true,
           itemName: true,
@@ -85,7 +85,7 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// POST /api/entries - create entry
+// POST /api/entries
 export async function POST(req: NextRequest) {
   try {
     const headersList = await headers();
@@ -99,25 +99,47 @@ export async function POST(req: NextRequest) {
     }
 
     const data = parsed.data;
+    const totalPrice = Math.round(data.quantity * data.unitPrice * 100) / 100;
 
-    // Server-side total price calculation (never trust client)
-    const totalPrice =
-      Math.round(data.quantity * data.unitPrice * 100) / 100;
+    const entry = await prisma.$transaction(async (tx) => {
+      const created = await tx.entry.create({
+        data: {
+          itemName: data.itemName,
+          quantity: data.quantity,
+          unit: data.unit,
+          unitPrice: data.unitPrice,
+          totalPrice,
+          vendorName: data.vendorName,
+          purchaseDate: new Date(data.purchaseDate),
+          invoiceNumber: data.invoiceNumber ?? null,
+          category: data.category,
+          notes: data.notes ?? null,
+          createdById: userId,
+        },
+      });
 
-    const entry = await prisma.entry.create({
-      data: {
-        itemName: data.itemName,
-        quantity: data.quantity,
-        unit: data.unit,
-        unitPrice: data.unitPrice,
-        totalPrice,
-        vendorName: data.vendorName,
-        purchaseDate: new Date(data.purchaseDate),
-        invoiceNumber: data.invoiceNumber ?? null,
-        category: data.category,
-        notes: data.notes ?? null,
-        createdById: userId,
-      },
+      await tx.auditLog.create({
+        data: {
+          userId,
+          action: "CREATE",
+          entityType: "Entry",
+          entityId: created.id,
+          diff: {
+            itemName: created.itemName,
+            quantity: Number(created.quantity),
+            unit: created.unit,
+            unitPrice: Number(created.unitPrice),
+            totalPrice: Number(created.totalPrice),
+            vendorName: created.vendorName,
+            purchaseDate: created.purchaseDate,
+            category: created.category,
+            invoiceNumber: created.invoiceNumber ?? null,
+            notes: created.notes ?? null,
+          } as object,
+        },
+      });
+
+      return created;
     });
 
     return ok(entry, 201);
