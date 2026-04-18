@@ -53,7 +53,7 @@ function AdminContent() {
       });
       const data = await res.json();
       if (!data.success) { setFormError(data.error); return; }
-      toast(`User ${name} created. Verification email sent.`);
+      toast(`User ${name} created. They must verify their email before logging in.`);
       setShowForm(false);
       setName(""); setEmail(""); setPassword(""); setRole("STAFF");
       fetchUsers();

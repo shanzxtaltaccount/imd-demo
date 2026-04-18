@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
 
     await prisma.user.update({
       where: { id: userId },
-      data: { emailVerified: true },
+      data: { emailVerified: true, isActive: true },
     });
 
     return ok({ message: "Email verified successfully." });

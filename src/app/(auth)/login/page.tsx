@@ -7,6 +7,7 @@ function LoginContent() {
   const router = useRouter();
   const params = useSearchParams();
   const resetSuccess = params.get("reset") === "1";
+  const verifiedSuccess = params.get("verified") === "1";
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -27,13 +28,14 @@ function LoginContent() {
 
       const data = await res.json();
 
-      if (!res.ok || !data.success) {
-        setError(data.error ?? "Login failed. Please try again.");
+      // Email not verified — send to verify page
+      if (res.status === 403 && data.error === "EMAIL_NOT_VERIFIED") {
+        router.push(`/verify-email?email=${encodeURIComponent(email)}`);
         return;
       }
 
-      if (data.data?.user?.emailVerified === false) {
-        router.push(`/verify-email?email=${encodeURIComponent(email)}`);
+      if (!res.ok || !data.success) {
+        setError(data.error ?? "Login failed. Please try again.");
         return;
       }
 
@@ -59,7 +61,14 @@ function LoginContent() {
 
         <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           {resetSuccess && (
-            <div className="alert alert-success">Password reset successfully. Please log in.</div>
+            <div className="alert alert-success">
+              Password reset successfully. Please log in.
+            </div>
+          )}
+          {verifiedSuccess && (
+            <div className="alert alert-success">
+              Email verified! Your account is now active. Please log in.
+            </div>
           )}
           {error && <div className="alert alert-error">{error}</div>}
 

@@ -43,7 +43,7 @@ function VerifyEmailContent() {
       const data = await res.json();
       if (!data.success) { setError(data.error); return; }
       setSuccess(true);
-      setTimeout(() => router.push("/entries"), 2000);
+      setTimeout(() => router.push("/login?verified=1"), 2000);
     } catch { setError("Network error."); }
     finally { setLoading(false); }
   }
