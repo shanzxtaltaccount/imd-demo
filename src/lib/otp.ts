@@ -26,6 +26,39 @@ export async function createOTP(userId: string, type: TokenType): Promise<string
   return code;
 }
 
+// ── OTP brute-force lockout ──────────────────────────────────────────────────
+// Tracks failed attempts per (email, type) key in memory.
+// Max 5 failed attempts before lockout. Resets on success or after 15 minutes.
+// In-memory is fine: OTPs expire in 10 min; a redeploy clears state safely.
+const otpFailStore = new Map<string, { attempts: number; lockedUntil: number }>();
+
+const MAX_OTP_ATTEMPTS = 5;
+const OTP_LOCKOUT_MS = 15 * 60 * 1000; // 15 minutes
+
+export function checkOTPLockout(email: string, type: TokenType): boolean {
+  const key = `${email}:${type}`;
+  const entry = otpFailStore.get(key);
+  if (!entry) return false; // not locked
+  if (Date.now() > entry.lockedUntil) {
+    otpFailStore.delete(key);
+    return false; // lockout expired
+  }
+  return entry.attempts >= MAX_OTP_ATTEMPTS;
+}
+
+export function recordOTPFailure(email: string, type: TokenType): number {
+  const key = `${email}:${type}`;
+  const entry = otpFailStore.get(key) ?? { attempts: 0, lockedUntil: 0 };
+  entry.attempts += 1;
+  entry.lockedUntil = Date.now() + OTP_LOCKOUT_MS;
+  otpFailStore.set(key, entry);
+  return entry.attempts;
+}
+
+export function clearOTPFailures(email: string, type: TokenType): void {
+  otpFailStore.delete(`${email}:${type}`);
+}
+
 /** Verify OTP — returns userId on success, null on failure */
 export async function verifyOTP(
   email: string,

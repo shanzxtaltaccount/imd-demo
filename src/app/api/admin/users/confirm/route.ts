@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { headers } from "next/headers";
 import { prisma } from "@/lib/prisma";
-import { verifyOTP } from "@/lib/otp";
+import { verifyOTP, checkOTPLockout, recordOTPFailure, clearOTPFailures } from "@/lib/otp";
 import { ok, err, forbidden, serverError } from "@/lib/api";
 import { z } from "zod";
 
@@ -13,8 +13,15 @@ const Schema = z.object({
 export async function POST(req: NextRequest) {
   try {
     const headersList = await headers();
-    const role = headersList.get("x-user-role");
-    if (role !== "ADMIN") return forbidden();
+    const currentUserId = headersList.get("x-user-id");
+    if (!currentUserId) return forbidden();
+
+    // 🔴 Fix #4: live DB role check
+    const currentUser = await prisma.user.findUnique({
+      where: { id: currentUserId },
+      select: { role: true },
+    });
+    if (!currentUser || currentUser.role !== "ADMIN") return forbidden();
 
     const body = await req.json();
     const parsed = Schema.safeParse(body);
@@ -22,13 +29,38 @@ export async function POST(req: NextRequest) {
 
     const { email, code } = parsed.data;
 
-    const userId = await verifyOTP(email, code, "EMAIL_VERIFY");
-    if (!userId) return err("Invalid or expired OTP.", 400);
+    // 🔴 Fix #3: OTP lockout
+    if (checkOTPLockout(email, "EMAIL_VERIFY")) {
+      return err("Too many failed attempts. Please resend OTP and try again.", 429);
+    }
 
-    // Activate the user now that OTP is confirmed
-    await prisma.user.update({
-      where: { id: userId },
-      data: { emailVerified: true, isActive: true },
+    const userId = await verifyOTP(email, code, "EMAIL_VERIFY");
+    if (!userId) {
+      recordOTPFailure(email, "EMAIL_VERIFY");
+      return err("Invalid or expired OTP.", 400);
+    }
+
+    clearOTPFailures(email, "EMAIL_VERIFY");
+
+    // 🟢 Fix #11: activate user + audit log in a transaction
+    await prisma.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { id: userId },
+        data: { emailVerified: true, isActive: true },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          userId: currentUserId,
+          action: "UPDATE",
+          entityType: "User",
+          entityId: userId,
+          diff: {
+            emailVerified: { from: false, to: true },
+            isActive: { from: false, to: true },
+          },
+        },
+      });
     });
 
     return ok({ message: "User verified and activated." });

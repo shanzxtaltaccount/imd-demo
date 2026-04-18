@@ -14,12 +14,19 @@ const CreateUserSchema = z.object({
   role: z.enum(["ADMIN", "STAFF"]).default("STAFF"),
 });
 
-// GET /api/admin/users - list all users
+// GET /api/admin/users
 export async function GET(_req: NextRequest) {
   try {
     const headersList = await headers();
-    const role = headersList.get("x-user-role");
-    if (role !== "ADMIN") return forbidden();
+    const currentUserId = headersList.get("x-user-id");
+    if (!currentUserId) return forbidden();
+
+    // 🔴 Fix #4: live DB role check — JWT role could be stale
+    const currentUser = await prisma.user.findUnique({
+      where: { id: currentUserId },
+      select: { role: true },
+    });
+    if (!currentUser || currentUser.role !== "ADMIN") return forbidden();
 
     const users = await prisma.user.findMany({
       select: {
@@ -29,6 +36,7 @@ export async function GET(_req: NextRequest) {
         role: true,
         isActive: true,
         emailVerified: true,
+        lastLoginAt: true,
         createdAt: true,
       },
       orderBy: { createdAt: "asc" },
@@ -40,12 +48,19 @@ export async function GET(_req: NextRequest) {
   }
 }
 
-// POST /api/admin/users - create user and send verification email
+// POST /api/admin/users
 export async function POST(req: NextRequest) {
   try {
     const headersList = await headers();
-    const role = headersList.get("x-user-role");
-    if (role !== "ADMIN") return forbidden();
+    const currentUserId = headersList.get("x-user-id");
+    if (!currentUserId) return forbidden();
+
+    // 🔴 Fix #4: live DB role check
+    const currentUser = await prisma.user.findUnique({
+      where: { id: currentUserId },
+      select: { role: true },
+    });
+    if (!currentUser || currentUser.role !== "ADMIN") return forbidden();
 
     const body = await req.json();
     const parsed = CreateUserSchema.safeParse(body);
@@ -60,19 +75,33 @@ export async function POST(req: NextRequest) {
 
     const passwordHash = await bcrypt.hash(password, 12);
 
-    const user = await prisma.user.create({
-      data: {
-        email: email.toLowerCase(),
-        name,
-        passwordHash,
-        role: userRole,
-        isActive: false,
-        emailVerified: false,
-      },
-      select: { id: true, email: true, name: true, role: true },
+    // 🟢 Fix #11: user create + audit log in a transaction
+    const user = await prisma.$transaction(async (tx) => {
+      const created = await tx.user.create({
+        data: {
+          email: email.toLowerCase(),
+          name,
+          passwordHash,
+          role: userRole,
+          isActive: false,
+          emailVerified: false,
+        },
+        select: { id: true, email: true, name: true, role: true },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          userId: currentUserId,
+          action: "CREATE",
+          entityType: "User",
+          entityId: created.id,
+          diff: { email: created.email, name: created.name, role: created.role },
+        },
+      });
+
+      return created;
     });
 
-    // Send verification email
     try {
       const code = await createOTP(user.id, "EMAIL_VERIFY");
       await sendEmail({
@@ -82,7 +111,6 @@ export async function POST(req: NextRequest) {
       });
     } catch (emailErr) {
       console.error("[Email Error]", emailErr);
-      // Don't fail user creation if email fails
     }
 
     return ok(user, 201);
