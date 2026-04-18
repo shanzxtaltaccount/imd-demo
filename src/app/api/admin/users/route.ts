@@ -66,6 +66,8 @@ export async function POST(req: NextRequest) {
         name,
         passwordHash,
         role: userRole,
+        isActive: false,
+        emailVerified: false,
       },
       select: { id: true, email: true, name: true, role: true },
     });

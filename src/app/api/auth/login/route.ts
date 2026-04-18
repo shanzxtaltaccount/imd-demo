@@ -6,7 +6,6 @@ import { LoginSchema } from "@/lib/validations";
 import { ok, err, serverError, rateLimit } from "@/lib/api";
 
 export async function POST(req: NextRequest) {
-  // Rate limit: max 5 login attempts per minute per IP
   const ip =
     req.headers.get("x-forwarded-for")?.split(",")[0].trim() ?? "unknown";
   if (!rateLimit(ip, 5, 60_000)) {
@@ -36,14 +35,23 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // Constant-time comparison even when user not found (prevent timing attacks)
     const dummyHash =
       "$2b$10$abcdefghijklmnopqrstuuABCDEFGHIJKLMNOPQRSTUVWXYZ012345";
     const hashToCheck = user?.passwordHash ?? dummyHash;
     const passwordMatch = await bcrypt.compare(password, hashToCheck);
 
-    if (!user || !passwordMatch || !user.isActive) {
+    if (!user || !passwordMatch) {
       return err("Invalid email or password.", 401);
+    }
+
+    // Check email verification — redirect signal for the client
+    if (!user.emailVerified) {
+      return err("EMAIL_NOT_VERIFIED", 403);
+    }
+
+    // Check active status separately for a clear message
+    if (!user.isActive) {
+      return err("Your account has been deactivated. Contact your administrator.", 403);
     }
 
     const token = await signToken({
@@ -54,7 +62,13 @@ export async function POST(req: NextRequest) {
     });
 
     const response = ok({
-      user: { id: user.id, email: user.email, name: user.name, role: user.role, emailVerified: user.emailVerified },
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        emailVerified: user.emailVerified,
+      },
     });
 
     response.cookies.set(COOKIE_NAME, token, {
@@ -62,7 +76,7 @@ export async function POST(req: NextRequest) {
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
       path: "/",
-      maxAge: 60 * 60 * 8, // 8 hours
+      maxAge: 60 * 60 * 8,
     });
 
     return response;
