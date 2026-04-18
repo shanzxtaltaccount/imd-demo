@@ -47,7 +47,10 @@ export async function GET(req: NextRequest) {
         where,
         skip,
         take: limit,
-        orderBy: { purchaseDate: "desc" },
+        orderBy:[ { purchaseDate: "desc" },
+        { createdAt: 'desc' },
+        ],
+
         select: {
           id: true,
           itemName: true,
@@ -85,7 +88,7 @@ export async function GET(req: NextRequest) {
 // POST /api/entries - create entry
 export async function POST(req: NextRequest) {
   try {
-    const headersList = headers();
+    const headersList = await headers();
     const userId = headersList.get("x-user-id");
     if (!userId) return err("Unauthorized", 401);
 
